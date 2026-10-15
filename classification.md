@@ -396,8 +396,8 @@ So depite MSE yielding a large loss, the gradient is small.
 We can see this by looking at increasingly wrong predictions for our class-1
 observation:
 
-| $z$ | $\hat{p}$ | MSE MSE gradient | BCE | BCE gradient |
-|-|-|-|-|-|
+| $z$ | $\hat{p}$ | MSE | MSE gradient | BCE | BCE gradient |
+|-|-|-|-|-|-|
 |0   | 0.500   | 0.250 | -0.250   | 0.693  | -0.500   |
 |-2  | 0.119   | 0.776 | -0.185   | 2.127  | -0.881   |
 |-5  | 0.007   | 0.987 | -0.013   | 5.007  | -0.993   |
