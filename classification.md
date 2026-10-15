@@ -185,23 +185,22 @@ accuracy: 0.95
 
 ## Issues with linear regression as a classifier
 
-Even though we are using the line as a classifier, we are still training it
-with MSE. MSE does not have the concept of a decision boundary and does not
-track whether a point is on the correct side of it. Instead, it tries to make
-every prediction $\hat{y}$ as close as possible to its observed value of 0 or 1.
+When using the line a classifier with MSE, MESE tries to make every prediction
+$\hat{y}$ as close as possible to its observed value of 0 or 1, and does not 
+track track whether a point is on the correct side of the decision boundary.
 
-For example, suppose a class-1 point has $y=1$:
+For example, if a class-1 point has $y=1$:
 - $\hat{y}=1$ has squared error 0
 - $\hat{y}=2$ has squared error 1
 - $\hat{y}=10$ has squared error 81
 
-From a classification perspective, all three predictions are comfortably on the
-class-1 side of the 0.5 boundary. But MSE thinks predicting 10 is terrible
-because it is far from the numerical target of 1.
+All three predictions are on the class-1 side of the 0.5 boundary. But MSE
+thinks predicting 10 is terrible because it is far from the numerical target of
+1.
 
-We can see the effect of this by adding ten more class-1 observations far to the
-right, with $x$ between 10 and 20. They are nowhere near the decision boundary
-and are easy to classify, but they have a large effect on the fitted line.
+We can see the effect of this by adding ten more class-1 observations far to
+the right, with $x$ between 10 and 20. These points should be  easy to
+classify, but they have a large effect on the fitted line.
 
 | Old fit | New fit |
 |-|-|
@@ -211,7 +210,7 @@ The resulting line has $w=0.045$ and $b=0.441$, moving the decision boundary
 from about $x=4.35$ to about $x=1.31$.
 
 The new observations are easy to classify, but MSE causes them to pull the line
-toward $y=1$. The result is a much worse decision boundary for the original
+toward $y=1$. The result is a worse decision boundary for the original
 observations.
 
 <details>
@@ -314,20 +313,22 @@ accuracy: 0.771429
 ## Logistic regression
 
 While linear regression does not work well for classification, we can still
-build a capable classifier from the core linear framework by changing how we
-interpret the model's output and the loss we use to train. Instead of treating
-$wx + b$ directly as a prediction for $y$, logistic regression transforms the
-output into the probability that an observation belongs to class 1. We also
-replace MSE with a loss function designed for classification, where correct,
-confident predictions have low loss and confident mistakes have high loss.
+build a classifier from the core linear framework by changing how we interpret
+the model's output and the loss we use to train. Instead of treating $wx + b$
+directly as a prediction for $y$, logistic regression transforms the output
+into the probability that an observation belongs to class 1. We also replace
+MSE with a loss function designed for classification, where correct, confident
+predictions have low loss and confident mistakes have high loss.
 
+One notation change.  From here on we call the linear part $z = wx + b$, and
+keep $y$ for the observed class.
 
 ### Sigmoid
 
-The output of $wx+b$ can be any number, but a probability must be between zero
-and one. Logistic regression passes $wx+b$ through the sigmoid function, which
-maps any value to a value between 0 and 1. Large negative values approach 0,
-large positive values approach 1, and $wx+b=0$ maps to 0.5.
+$z$ can be any number, but a probability must be between zero and one. Logistic
+regression passes $z$ through the sigmoid function, which maps any value to a
+value between 0 and 1. Large negative values approach 0, large positive values
+approach 1, and $z=0$ maps to 0.5.
 
 | Sigmoid funciton | Sigmoid plot |
 |-|-|
@@ -365,29 +366,38 @@ as 0 and probabilities at or above 0.5 are classified as 1.  For example:
 | 6   | 0.97 | 1 |
 | 8   | 1.00 | 1 |
 
+Calling $\hat{p}$ a probability is a claim about the model, not a fact. It is
+only a probability if, among all the observations where the model says 0.8,
+about 80% are actually class 1. Checking that is called calibration, and we
+will come back to it whenever we use a model's score as evidence.
+
+The sigmoid is also what fixes the outlier problem. A class-1 point far to the
+right has $\hat{p}$ close to 1 no matter how large $z$ gets.
 
 ### Binary cross-entropy
 
-Mean squared error tries to make every prediction as close as possible to its
-observed value of 0 or 1, but when combined with the sigmoid function it can
-produce very small gradients for confident predictions, wich in turn can 
-make gradient descent slow to correct a model that is badly wrong.
+If we are to use the simoid, we cannot contunue using MSE.
+
+The sigmoid is flat
+near 0 and 1, so MSE can produce very small gradients for confident
+predictions. That makes gradient descent slow to correct a model that is badly
+wrong.
 
 Consider a single observation whose true class is 1. The model calculates
-$y = wx+b$ and then passes $y$ through the sigmoid to get a probability
-$\hat{p}$.  If $y$ is a large negative number, the sigmoid produces a
-probability very close to 0. The model is confidently predicting class 0, which
-is very wrong because the true class is 1.
+$z = wx+b$ and then passes $z$ through the sigmoid to get $\hat{p}$.  If $z$ is
+a large negative number, the sigmoid produces a probability very close to 0.
+The model is confidently predicting class 0, which is very wrong because the
+true class is 1.
 
 The problem is when we ask gradient descent how to fix it. Near 0 and 1 the
-sigmoid is flat, so changing $y$ produces only a small change in $\hat{p}$.
+sigmoid is flat, so changing $z$ produces only a small change in $\hat{p}$.
 So depite MSE yielding a large loss, the gradient is small.
 
 We can see this by looking at increasingly wrong predictions for our class-1
 observation:
 
-| $y$ | $\hat{p}$ | MSE MSE gradient | BCE | BCE gradient |
-|-|-|-|-|-|-|
+| $z$ | $\hat{p}$ | MSE MSE gradient | BCE | BCE gradient |
+|-|-|-|-|-|
 |0   | 0.500   | 0.250 | -0.250   | 0.693  | -0.500   |
 |-2  | 0.119   | 0.776 | -0.185   | 2.127  | -0.881   |
 |-5  | 0.007   | 0.987 | -0.013   | 5.007  | -0.993   |
