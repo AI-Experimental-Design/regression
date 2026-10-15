@@ -33,7 +33,7 @@ between the classes.
 
 <details>
 
-```
+```bash
 python src/make_class_dataset.py \
     --out out/class.data.tsv
 
@@ -74,7 +74,7 @@ learned $w=0.135$ and $b=-0.087$.
 
 <details>
 
-```
+```bash
 python src/train_line.py \
     --data out/class.data.tsv \
     --w0 0.5 \
@@ -149,7 +149,7 @@ boundary works well for these points.
 
 <details>
 
-```
+```bash
 correct=0
 total=0
 
@@ -215,7 +215,7 @@ observations.
 
 <details>
 
-```
+```bash
 cp out/class.data.tsv out/class.10_outliers.data.tsv
 for v in $(seq 10 20); do 
     echo -e "${v}.0\t1.0" \
@@ -376,57 +376,86 @@ right has $\hat{p}$ close to 1 no matter how large $z$ gets.
 
 ### Binary cross-entropy
 
-If we are to use the simoid, we cannot contunue using MSE.
+When we used linear regression, we used MSE to measure how far our predictions
+were from the true values. We could continue using MSE with logistic
+regression, but combining MSE with the sigmoid creates a problem for gradient
+descent.
 
-The sigmoid is flat
-near 0 and 1, so MSE can produce very small gradients for confident
-predictions. That makes gradient descent slow to correct a model that is badly
-wrong.
+Gradient descent uses the slope (the gradient) of the loss function to
+determine how to update the model's parameters. The sign of the slope
+determines the direction of the update, while its magnitude determines the
+size. A steep slope produces a large update. A flatter slope produces a smaller
+update.
 
-Consider a single observation whose true class is 1. The model calculates
-$z = wx+b$ and then passes $z$ through the sigmoid to get $\hat{p}$.  If $z$ is
-a large negative number, the sigmoid produces a probability very close to 0.
-The model is confidently predicting class 0, which is very wrong because the
-true class is 1.
+The problem comes from the shape of the sigmoid. As its output approaches 0 or
+1, the sigmoid becomes nearly flat. This means that even a relatively large
+change in $z$ produces only a small change in $\hat{p}$.
 
-The problem is when we ask gradient descent how to fix it. Near 0 and 1 the
-sigmoid is flat, so changing $z$ produces only a small change in $\hat{p}$.
-So depite MSE yielding a large loss, the gradient is small.
+Consider an observation whose true class is 1, but the model calculates
+$z=-10$. The sigmoid produces $\hat{p}=0.00005$, which is a very bad prediction
+because the model is confidently predicting class 0, even though the true class
+is 1.
 
-We can see this by looking at increasingly wrong predictions for our class-1
-observation:
+MSE correctly identifies this as a bad prediction and gives it a loss close to
+one. But the loss and the gradient are not the same thing. The loss tells us
+how wrong the prediction is. The gradient tells gradient descent how much the
+loss will change if we adjust the model's parameters.
+
+At $z=-10$, the sigmoid has a slope close to zero. If we increase $z$ from -10 to -9, $\hat{p}$ only changes from 0.00005 to 0.00012, and the MSE loss decreases from 0.99991 to just 0.99975. Even though we made a relatively large change to $z$, the loss barely changed. This tells us that the slope of the loss function is nearly zero, so gradient descent makes only a tiny update. The model needs a large correction, but the gradient provides almost no signal to make one.
+
+We can see this by comparing the loss and gradient for increasingly wrong predictions:
 
 | $z$ | $\hat{p}$ | MSE | MSE gradient | BCE | BCE gradient |
-|-|-|-|-|-|-|
-|0   | 0.500   | 0.250 | -0.250   | 0.693  | -0.500   |
-|-2  | 0.119   | 0.776 | -0.185   | 2.127  | -0.881   |
-|-5  | 0.007   | 0.987 | -0.013   | 5.007  | -0.993   |
-|-10 | 0.00005 | 1.000 | -0.00009 | 10.000 | -0.99995 |
+|---|---|---|---|---|---|
+| 0 | 0.500 | 0.250 | -0.250 | 0.693 | -0.500 |
+| -2 | 0.119 | 0.776 | -0.185 | 2.127 | -0.881 |
+| -5 | 0.007 | 0.987 | -0.013 | 5.007 | -0.993 |
+| -10 | 0.00005 | 1.000 | -0.00009 | 10.000 | -0.99995 |
 
-As the MSE model becomes more confidently wrong, its loss approaches 1 but its
+As the model becomes more confidently wrong, the MSE loss approaches 1 but its
 gradient approaches 0. Gradient descent gets less and less signal to fix the
 mistake.
 
-Binary cross-entropy behaves differently. As the model becomes more confidently
-wrong, the loss continues to increase and the gradient remains strong. A badly
-wrong prediction therefore produces a strong signal to update the model.
+Binary cross-entropy (BCE) solves this problem. Unlike MSE, BCE produces a
+strong gradient when the model is confidently wrong, allowing gradient descent
+to make meaningful corrections.
 
-Binary cross-entropy is
-
-$$
-L = -\left[y\log(\hat{p}) + (1-y)\log(1-\hat{p})\right]
-$$
-
-When combined with the sigmoid, its gradient simplifies to
+BCE measures how much probability the model assigns to the correct class. For a
+single observation, it is defined as
 
 $$
-\frac{\partial L}{\partial y} = \hat{p} - y_{\text{observed}}
+L_{\mathrm{BCE}} = -\left[y\log(\hat{p}) + (1-y)\log(1-\hat{p})\right]
 $$
 
-This gives us the two changes we need to turn our linear model into logistic
-regression: the sigmoid converts the output into a probability, and binary
-cross-entropy gives us a loss that works well with those probabilities during
-training. Everything else about gradient descent stays the same.
+where $y$ is the true class (0 or 1) and $\hat{p}$ is the probability predicted
+by the sigmoid.
+
+When $y=1$, the second term disappears, leaving
+
+$$
+L_{\mathrm{BCE}} = -\log(\hat{p})
+$$
+
+If the model predicts a probability close to 1, the loss is close to 0. But as
+the predicted probability approaches 0, the loss increases without bound.
+Unlike MSE, which approaches 1 for a confidently wrong prediction, BCE
+continues to penalize the model as its prediction gets worse.
+
+When we combine BCE with the sigmoid and calculate the
+gradient of the loss with respect to $z$, the result simplifies to
+
+$$
+\frac{dL_{\mathrm{BCE}}}{dz} = \hat{p}-y
+$$
+
+This means the gradient depends directly on the difference between the
+predicted probability and the true class. When $y=1$ and $\hat{p}=0.00005$, the
+gradient is approximately $-1$, rather than nearly zero as it was with MSE.
+
+The negative gradient tells gradient descent to increase $z$, which increases
+the predicted probability. Because the gradient remains large when the
+prediction is badly wrong, the model can make a meaningful correction rather
+than getting stuck making tiny updates.
 
 ## Training
 
@@ -445,12 +474,19 @@ $$ \frac{\partial L}{\partial w} = \frac{1}{n}\sum_{i=1}^{n}(\hat{p}_i-y_i)x_i $
 
 $$ \frac{\partial L}{\partial b} = \frac{1}{n}\sum_{i=1}^{n}(\hat{p}_i-y_i) $$
 
-These should look familiar. As with linear regression, the gradient tells us
-which direction to move each parameter and the learning rate determines how
-large a step we take.
+As with linear regression, the gradient tells us which direction to move each
+parameter and the learning rate determines how large a step we take.
 
 We can now train the logistic regression model on the same classification data
-that we used for our linear classifier.
+that we used for our linear classifier. After 5000 epochs the model has learned
+$w=2.017$ and $b=-8.558$, which puts the decision boundary at
+$x=4.24$.
+
+|Loss | $w,b$ | Fit |
+|-|-|-|
+| <img src="img/class.logistic.params.training.png"> | <img src="img/class.logistic.params.png"> | <img src="img/class.logistic.fit.png"> |
+
+<details>
 
 ```bash
 python src/train_logistic.py \
@@ -472,37 +508,155 @@ wrote out/class.logistic.params.tsv
 
 python src/plot_training.py \
     -i out/class.logistic.params.tsv \
-    -o img/class.10_outliers.data.params.training.png \
+    -o img/class.logistic.params.training.png \
     --columns loss \
     --ylog \
-    --title "MSE over training"
+    --title "BCE over training"
 
 python src/plot_training.py \
-    -i out/class.10_outliers.data.params.tsv \
-    -o img/class.10_outliers.data.params.png \
+    -i out/class.logistic.params.tsv \
+    -o img/class.logistic.params.png \
     --columns w,b \
     --title "w and b over training"
 
-python src/plot_fit.py \
-    --data  out/class.data.tsv \
-    --w 0.045 \
-    --b 0.441 \ 
-    --residuals \
-    -o img/class.10_outliers.data.tsv.residuals.png \
+python src/plot_logistic_fit.py \
+    --data out/class.data.tsv \
+    --w 2.017 \
+    --b -8.558 \
+    -o img/class.logistic.fit.png \
     -x x \
-    -y y
+    -y label \
+    --title "Logistic fit"
+
+correct=0
+total=0
+
+while read x class; do
+    p_hat=$( python src/logistic_inference.py \
+        --w 2.017 \
+        --b -8.558 \
+        --x "$x" \
+    | tail -n 1 \
+    | awk '{print $3}' )
+
+    pred=$(awk -v p="$p_hat" 'BEGIN {print (p >= 0.5) ? 1 : 0}')
+
+
+    if awk -v p="$pred" -v c="$class" 'BEGIN {exit !(p == c)}'; then
+        correct=$((correct + 1))
+    fi
+
+    echo $x $class $pred $correct
+
+    total=$((total + 1))
+
+done < <(tail -n +3 out/class.data.tsv)
+
+accuracy=$(awk -v c="$correct" -v t="$total" 'BEGIN {print c/t}')
+
+echo "correct: $correct / $total"
+correct: 56 / 59
+echo "accuracy: $accuracy"
+accuracy: 0.949153
+
+```
+</details>
+
+As training proceeds, binary cross-entropy decreases and the decision boundary
+moves toward the region separating the two classes.  Between epoch 2000 and
+5000 the loss keeps going down, but accuracy drops from 96.7% to 95%. The loss
+is what gradient descent optimizes. Accuracy is what we care about. They
+usually move together, but they are not the same thing, and a lower loss does
+not guarantee a better classifier.
+
+On these data, logistic regression gets 95%, the same accuracy as the line.
+The advantage of logistic regression here is not accuracy on easy data. It is
+that the model gives us probabilities and that it holds up when the data get
+harder.
+
+### Logistic regression with the outliers
+
+To see that, we train logistic regression on the dataset with the ten easy
+class-1 points added.
+
+| Linear, with outliers | Logistic, with outliers |
+|-|-|
+| <img src="img/class.10_outliers.data.tsv.residuals.png"> | <img src="img/class.10_outliers.logistic.fit.png"> |
+
+The logistic model learns $w=1.926$ and $b=-8.163, putting the decision
+boundary at 4.238, compared with 4.24 without the outliers. On the original 60
+points it classifies 56 correctly. The extra points already have $\hat{p}$ near
+1, so they contribute almost nothing to the gradient and the boundary stays
+where the classes overlap.
+
+<details>
+
+```bash
+
+python src/train_logistic.py \
+    --data out/class.10_outliers.data.tsv \
+    --lr 0.1 \
+    --epochs 5000 \
+    --out_prefix out/class.10_outliers.logistic
+epoch 0000 bce=0.6931 acc=0.648 w=+0.000 b=+0.000 boundary=nan
+epoch 0001 bce=0.4368 acc=0.648 w=+0.258 b=+0.015 boundary=-0.057
+epoch 0010 bce=0.4175 acc=0.718 w=+0.278 b=-0.115 boundary=0.415
+epoch 0050 bce=0.3499 acc=0.803 w=+0.361 b=-0.629 boundary=1.740
+epoch 0100 bce=0.2941 acc=0.859 w=+0.451 b=-1.149 boundary=2.544
+epoch 0200 bce=0.2310 acc=0.915 w=+0.595 b=-1.927 boundary=3.240
+epoch 0500 bce=0.1612 acc=0.958 w=+0.870 b=-3.323 boundary=3.818
+epoch 1000 bce=0.1260 acc=0.972 w=+1.138 b=-4.606 boundary=4.047
+epoch 2000 bce=0.1033 acc=0.972 w=+1.453 b=-6.056 boundary=4.168
+epoch 5000 bce=0.0868 acc=0.958 w=+1.926 b=-8.163 boundary=4.238
+wrote out/class.10_outliers.logistic.params.tsv
+
+python src/plot_logistic_fit.py \
+    --data out/class.10_outliers.data.tsv \
+    --w 1.926 \
+    --b -8.163 \
+    -o img/class.10_outliers.logistic.fit.png \
+    -x x \
+    -y label \
+    --title "Logistic fit with outliers"
+
+# accuracy on the original 60 observations only
+correct=0
+total=0
+
+while read x class; do
+    p_hat=$( python src/logistic_inference.py \
+        --w 1.926 \
+        --b -8.163 \
+        --x "$x" \
+    | tail -n 1 \
+    | awk '{print $3}' )
+
+    pred=$(awk -v p="$p_hat" 'BEGIN {print (p >= 0.5) ? 1 : 0}')
+
+
+    if awk -v p="$pred" -v c="$class" 'BEGIN {exit !(p == c)}'; then
+        correct=$((correct + 1))
+    fi
+
+    echo $x $class $pred $correct
+
+    total=$((total + 1))
+
+done < <(tail -n +3 out/class.data.tsv)
+
+accuracy=$(awk -v c="$correct" -v t="$total" 'BEGIN {print c/t}')
+
+echo "correct: $correct / $total"
+correct: 56 / 59
+echo "accuracy: $accuracy"
+accuracy: 0.949153
 ```
 
-As training proceeds, binary cross-entropy decreases while the decision
-boundary moves toward the region separating the two classes. Once training is
-complete, $w$ and $b$ are fixed and we can use the model for inference just as
-we did with linear regression.
+</details>
 
-The difference is that inference now produces a probability:
+## Inference
 
-$$
-x \rightarrow wx+b \rightarrow \text{sigmoid} \rightarrow \hat{p}
-$$
-
-We can then use our 0.5 decision boundary to turn that probability into a
-predicted class.
+Once training is complete, $w$ and $b$ are fixed and we can use the model for
+inference just as we did with linear regression. The difference is that
+inference now produces a probability where 0.5 is decision boundary to turn
+that probability into a predicted class.
